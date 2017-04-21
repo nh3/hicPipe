@@ -1,0 +1,37 @@
+#!/bin/bash
+
+fq1=$1
+fq2=$2
+merged=$3
+paired=$4
+valid=$5
+cis=$6
+trans=$7
+exChrom=$8
+output=$9
+nThread=${10}
+
+if [ "x$exChrom" == "x" ]
+then
+    echo "Usage: $0 <fq1> <fq2> <merged> <paired> <valid> <cis> <trans> <exChrom> <output> [nThread]"
+    exit 1
+fi
+
+if [ "x$nThread" == "x" ]
+then
+    nThread=1
+fi
+
+n1=`zcat $fq1 | parallel -j $nThread --pipe wc -l | awk '{s=s+$1} END{print s/4}'`
+n2=`zcat $fq2 | parallel -j $nThread --pipe wc -l | awk '{s=s+$1} END{print s/4}'`
+n=`expr $n1 + $n2`
+nMapped=`sambamba view -t $nThread -c -F 'not supplementary and not secondary_alignment' $merged`
+nExChrom=`sambamba view -t $nThread -c -F 'ref_id=='$exChrom' and not supplementary and not secondary_alignment' $merged`
+nIncChrom=`expr $nMapped - $nExChrom`
+nMqPaired=`sambamba view -t $nThread -c $paired`
+nValid=`sambamba view -t $nThread -c $valid`
+nCis=`sambamba view -t $nThread -c $cis`
+nTrans=`sambamba view -t $nThread -c $trans`
+nInfo=`expr $nCis + $nTrans`
+echo -e "#nAll\tnMapped\tnIncChrom\tnMqPaired\tnValid\tnInfo\tnCis" > $output
+echo -e "$n\t$nMapped\t$nIncChrom\t$nMqPaired\t$nValid\t$nInfo\t$nCis" >> $output
