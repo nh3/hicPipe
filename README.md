@@ -1,11 +1,12 @@
 # hicPipe
+*Map and process pair-end C-seq reads*
 
-**Map and process pair-end C-seq reads**
+## Features ##
 * _Split read mapping for longer reads_
 * _Iterative trimming and mapping for shorter reads_
 <p></p>
 
-**Dependencies**
+## Dependencies ##
 1. bwa
 2. samtools
 3. sambamba
@@ -14,6 +15,7 @@
 6. bam2bw (from ngs-utils)
 <p></p>
 
+## Usage ##
     Usage:
         hicPipe.py (split|iter|short) [options] <genome> <read1> <read2> [<output>]
 
