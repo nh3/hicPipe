@@ -5,6 +5,15 @@
 * _Iterative trimming and mapping for shorter reads_
 <p></p>
 
+**Dependencies**
+1. bwa
+2. samtools
+3. sambamba
+4. pigz
+5. trimFq (from ngs-utils)
+6. bam2bw (from ngs-utils)
+<p></p>
+
     Usage:
         hicPipe.py (split|iter|short) [options] <genome> <read1> <read2> [<output>]
 
