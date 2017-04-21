@@ -11,12 +11,15 @@
 2. samtools
 3. sambamba
 4. pigz
-5. trimFq (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
-6. bam2bw (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
+5. gnu parallel
+6. trimFq (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
+7. bam2bw (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
+8. numpy
+9. pysam
 <p></p>
 
 ## Install ##
-1. Make sure all dependencies are installed, in PATH and executable
+1. Make sure all dependencies are properly installed, executables are in PATH
 2. Make sure scripts `pairSplitRead` and `gatherCSeqStats` are in PATH and executable
 
 ## Usage ##
