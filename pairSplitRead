@@ -1,0 +1,350 @@
+#!/usr/bin/env python
+'''
+Usage: pairSplitRead.py [-m minMapq] [-n maxNM] [-g <maxGap>] [-v <maxOvlp>] [-d <maxD>] [-M] (-i <SAM>)
+
+Options:
+    -h                  print this message
+    -M                  extract multi-part split reads
+    -m <minMapq>        minimum mapping quality [default: 30]
+    -n <maxNM>          maximum number of mismatches per non-split-alignment [default: 2]
+    -g <maxGap>         maximum number of unaligned bases of the read [default: 10]
+    -v <maxOvlp>        maximum split alignment overlap [default: 5]
+    -d <maxD>           maximum distance between read pairs from normal fragments [default: 600]
+    -i <SAM>            name-sorted SAM/BAM
+'''
+
+from __future__ import print_function
+import sys
+import re
+import numpy as np
+import pysam
+from operator import attrgetter
+import signal
+import logging
+
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s; %(funcName)s; %(levelname)s; %(message)s',
+    datefmt='%y-%m-%d %H:%M:%S')
+
+inf = float('inf')
+empty_array = np.array([])
+
+
+class Fragment(object):
+    def __init__(self, query_name, sam):
+        self.queryName = query_name
+        self.sam = sam
+        self.fEnd1 = None
+        self.fEnd2 = None
+        self.pairedEnds = None
+        self.multiPart = None
+
+    def __str__(self):
+        s1 = str(self.fEnd1)
+        s2 = str(self.fEnd2)
+        return 'query: {}\nfEnd1:\n{}\nfEnd2:\n{}'.format(self.queryName, s1, s2)
+
+    def addAlignment(self, aln):
+        if aln.flag & 0x40:
+            if self.fEnd1 is None:
+                self.fEnd1 = FragmentEnd(self.queryName, aln.query_length)
+            self.fEnd1.addAlignment(aln)
+        elif aln.flag & 0x80:
+            if self.fEnd2 is None:
+                self.fEnd2 = FragmentEnd(self.queryName, aln.query_length)
+            self.fEnd2.addAlignment(aln)
+        else:
+            raise ValueError('{}: alignment from neither read1 nor read2'.format(self.queryName))
+
+    def isValid(self, min_mapq, max_nm, max_gap, max_ovlp):
+        self.valid = self.fEnd1 is not None and self.fEnd2 is not None and self.fEnd1.isValid(min_mapq, max_nm, max_gap, max_ovlp) and self.fEnd2.isValid(min_mapq, max_nm, max_gap, max_ovlp)
+        return self.valid
+
+    def pairFragmentAlignment(self, max_d):
+        assert self.valid, 'self.valid unset or false'
+        if self.fEnd1.nAlign == 1 and self.fEnd2.nAlign == 1:
+            pairType = 0
+            paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        elif self.fEnd1.nAlign == 2 and self.fEnd2.nAlign == 1:
+            pairType = 1
+            a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
+            a1b0 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[0], max_d)
+            a0a1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd1.alignments[1], max_d)
+            if not a0a1 and ((not a0b0 and a1b0) or (a0b0 and not a1b0)):
+                self.fEnd1.alignments[1].flag += 0x40
+                self.fEnd1.alignments[1].flag ^ 0x10
+                paired = (self.fEnd1.alignments[0], self.fEnd1.alignments[1])
+            elif not a0b0 and not a1b0 and a0a1:
+                pairType = 11
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+            else:
+                pairType = 12
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        elif self.fEnd1.nAlign == 1 and self.fEnd2.nAlign == 2:
+            pairType = 1
+            a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
+            a0b1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[1], max_d)
+            b0b1 = self.fromNormalFragment(self.fEnd2.alignments[0], self.fEnd2.alignments[1], max_d)
+            if not b0b1 and ((not a0b0 and a0b1) or (a0b0 and not a0b1)):
+                self.fEnd2.alignments[0].flag -= 0x40
+                self.fEnd2.alignments[0].flag ^ 0x10
+                paired = (self.fEnd2.alignments[0], self.fEnd2.alignments[1])
+            elif not a0b0 and not a0b1 and b0b1:
+                pairType = 11
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+            else:
+                pairType = 12
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        elif self.fEnd1.nAlign == 2 and self.fEnd2.nAlign == 2:
+            pairType = 2
+            a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
+            a1b0 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[0], max_d)
+            a0b1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[1], max_d)
+            a1b1 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[1], max_d)
+            if a0b0 and a1b1 and not a0b1 and not a1b0:
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[1])
+            elif a0b1 and a1b0 and not a0b0 and not a1b1:
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+            elif a0b0 and not a1b1:
+                pairType = 21
+                paired = (self.fEnd1.alignments[1], self.fEnd2.alignments[1])
+            elif a0b1 and not a1b0:
+                pairType = 22
+                paired = (self.fEnd1.alignments[1], self.fEnd2.alignments[0])
+            elif a1b0 and not a0b1:
+                pairType = 23
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[1])
+            elif a1b1 and not a0b0:
+                pairType = 24
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+            else:
+                pairType = 25
+                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        else:
+            pairType = 9
+            paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        for aln in paired:
+            aln.set_tag('ZT', pairType, value_type='i')
+            if aln.flag & 0x800:
+                aln.flag -= 0x800
+        self.pairedEnds = paired
+
+    def isMultiParts(self, max_d):
+        assert self.valid, 'self.valid unset or false'
+        if self.multiPart is None:
+            self.multiPart = False
+            if self.fEnd1.nAlign > 2 and self.fEnd2.nAlign > 2 and self.fEnd1.nAlign == self.fEnd2.nAlign:
+                self.fEnd1.sortAlignments(byReference=True)
+                self.fEnd2.sortAlignments(byReference=True)
+                if all([self.fromNormalFragment(aln1, aln2, aln1.query_length) for aln1,aln2 in zip(self.fEnd1.alignments,self.fEnd2.alignments)]):
+                    self.fEnd1.calcAlignmentDistance()
+                    if np.min(self.fEnd1.alnDistance) > max_d:
+                        self.multiPart = 1
+            elif self.fEnd1.nAlign == 2 and self.fEnd2.nAlign == 2:
+                self.fEnd1.sortAlignments(byReference=False)
+                self.fEnd2.sortAlignments(byReference=False)
+                if self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[1], max_d):
+                    self.fEnd1.calcAlignmentDistance()
+                    self.fEnd2.calcAlignmentDistance()
+                    if np.min(self.fEnd1.alnDistance) > max_d and np.min(self.fEnd2.alnDistance) > max_d:
+                        self.multiPart = 2
+        return self.multiPart
+
+    def fromNormalFragment(self, aln1, aln2, max_d):
+        if aln1.reference_id == aln2.reference_id:
+            if abs(aln1.reference_start - aln2.reference_start) <= 5:
+                return aln1.is_reverse^aln2.is_reverse
+            conditions = [aln1.reference_start < aln2.reference_start, not aln1.is_reverse, aln2.is_reverse]
+            if ((all(conditions) and aln2.reference_end - aln1.reference_start < max_d)
+                or (not any(conditions) and aln1.reference_end - aln2.reference_start < max_d)):
+                return True
+        return False
+
+    def printPairedEnds(self):
+        if self.pairedEnds is not None:
+            for aln in self.pairedEnds:
+                print(aln.tostring(self.sam))
+
+    def printMultiParts(self):
+        assert self.multiPart, 'not multi-part split read'
+        if self.multiPart == 1:
+            parts = np.array([(aln.reference_id,
+                               aln.reference_start,
+                               aln.reference_end,
+                               aln.mapping_quality) for aln in self.fEnd1.alignments],
+                             dtype=[('ref','i4'), ('start','i4'), ('end','i4'), ('mapq','i2')])
+        elif self.multiPart == 2:
+            aln1 = self.fEnd1.alignments[0]
+            aln2 = self.fEnd1.alignments[1]
+            aln3 = self.fEnd2.alignments[0]
+            aln4 = self.fEnd2.alignments[1]
+            part1 = (aln1.reference_id, aln1.reference_start, aln1.reference_end, aln1.mapping_quality)
+            part3 = (aln3.reference_id, aln3.reference_start, aln3.reference_end, aln3.mapping_quality)
+            x = [aln2.reference_start,aln2.reference_end,aln4.reference_start,aln4.reference_end]
+            part2 = (aln2.reference_id, min(x), max(x), (aln2.mapping_quality+aln4.mapping_quality)/2)
+            parts = np.array([part1, part2, part3], dtype=[('ref','i2'), ('start','i4'), ('end','i4'),('mapq','i2')])
+            parts = parts[np.argsort(parts, order=('ref','start','end'))]
+        else:
+            raise ValueError, '[{}] multiPart can only be 1, 2 or None'.format(self.queryName)
+
+        if all(parts['ref'] == parts['ref'][0]):
+            chrom = self.sam.get_reference_name(parts['ref'][0])
+            start = np.min(parts['start'])
+            end = np.max(parts['end'])
+            name = self.queryName
+            score = np.sum(parts['mapq'])
+            score = self.multiPart + score/10**np.ceil(np.log10(score))
+            blkCount = len(parts)
+            blkSize = ','.join((parts['end'] - parts['start']).astype('S'))
+            blkStarts = ','.join((parts['start'] - start).astype('S'))
+            print('{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\t{9}\t{10}\t{11}'.format(
+                    chrom,start,end,name,score,'+',start,end,'.',blkCount,blkSize,blkStarts))
+        else:
+            print('\t'.join((','.join([self.sam.get_reference_name(i) for i in parts['ref']]),
+                             ','.join(parts['start'].astype('S')),
+                             ','.join(parts['end'].astype('S')),
+                             self.queryName,
+                             np.sum(parts['mapq']).astype('S'))))
+
+
+class FragmentEnd(object):
+    cigarOpPattern = re.compile(r'([0-9]+)([MIDNSHP=X])')
+    refConsumeOp = {'M', 'D', 'N'}
+    queryConsumeOp = {'M', 'I', 'S', 'H'}
+
+    def __init__(self, query_name, query_length):
+        self.queryName = query_name
+        self.queryLength = query_length
+        self.alignments = []
+        self.queryStarts = []
+        self.queryEnds = []
+        self.nAlign = 0
+        self.split = False
+        self.mapq = 999
+        self.NM = 0
+        self.coverage = np.zeros(self.queryLength, dtype=np.int8)
+        self.sortedAln = False
+
+    def __str__(self):
+        return 'queryName = {}\nqueryLength = {}\ncoverage = {}\nalignments =\n{}'.format(
+            self.queryName,
+            self.queryLength,
+            ','.join(self.coverage.astype('S')),
+            ','.join([aln.cigarstring for aln in self.alignments])
+        )
+
+    def addAlignment(self, aln):
+        if  aln.flag & 0x10:
+            queryStart = self.queryLength - aln.query_alignment_end
+            queryEnd = self.queryLength - aln.query_alignment_start
+        else:
+            queryStart = aln.query_alignment_start
+            queryEnd = aln.query_alignment_end
+        self.queryStarts.append(queryStart)
+        self.queryEnds.append(queryEnd)
+        self.coverage[queryStart:queryEnd] += 1
+        self.alignments.append(aln)
+        self.nAlign += 1
+        if aln.has_tag('SA'):
+            self.split = True
+        if aln.mapping_quality < self.mapq:
+            self.mapq = aln.mapping_quality
+        self.NM += aln.get_tag('NM')
+
+    def sortAlignments(self, byReference=True):
+        if byReference:
+            self.alignments = sorted(self.alignments, key=attrgetter('reference_id','reference_start'))
+        else:
+            idx = np.argsort(np.array(self.queryStarts))
+            self.alignments = [self.alignments[i] for i in idx]
+        self.sortedAln = True
+
+    def calcAlignmentDistance(self):
+        assert self.split and self.sortedAln, 'not split read or alignments not sorted'
+        self.alnDistance = np.ones(self.nAlign-1) * np.inf
+        for i in xrange(self.nAlign):
+            if i >= self.nAlign - 1:
+                break
+            if self.alignments[i].reference_id == self.alignments[i+1].reference_id:
+                self.alnDistance[i] = abs(self.alignments[i+1].reference_start - self.alignments[i].reference_start)
+
+
+    def parseCigar(self, cigarstring):
+        ops = []
+        query_i = 0
+        for op in self.cigarOpPattern.finditer(cigarstring):
+            n = int(op.group(1))
+            o = op.group(2)
+            s = query_i
+            if o in self.queryConsumeOp:
+                query_i += n
+            ops.append((o, n, s, query_i))
+        ops = np.array(ops, dtype=[('op', 'S1'), ('len', 'i2'), ('qstart', 'i2'), ('qend', 'i2')])
+        return ops
+
+    def getQueryMatchPos(self, ops, reverse):
+        k = ops['op'] == 'M'
+        queryStart = np.min(ops['qstart'][k])
+        queryEnd = np.max(ops['qend'][k])
+        if reverse:
+            queryStart, queryEnd = self.queryLength - queryEnd, self.queryLength - queryStart
+        return queryStart, queryEnd
+
+    def isValid(self, min_mapq, max_nm, max_gap, max_ovlp):
+        if self.split:
+            return self.mapq >= min_mapq and np.sum(self.coverage == 0) <= max_gap and np.sum(self.coverage > 1) <= max_ovlp
+        else:
+            return self.mapq >= min_mapq and self.NM <= max_nm
+
+
+def main(args):
+    inputSam = args['i']
+    minMapq = int(args['m'])
+    maxNM = int(args['n'])
+    maxGap = int(args['g'])
+    maxOvlp = int(args['v'])
+    maxD = int(args['d'])
+    multiPart = args['M']
+
+    sam = pysam.AlignmentFile(inputSam)
+    if not multiPart:
+        print(sam.text, end='')
+    prev_qname = ''
+    frag = Fragment(prev_qname, sam)
+    for aln in sam:
+        if aln.is_unmapped:
+            continue
+        if not prev_qname == aln.query_name:
+            if not prev_qname == '' and frag.isValid(minMapq, maxNM, maxGap, maxOvlp):
+                if multiPart:
+                    if frag.isMultiParts(maxD):
+                        frag.printMultiParts()
+                else:
+                    frag.pairFragmentAlignment(maxD)
+                    frag.printPairedEnds()
+            frag = Fragment(aln.query_name, sam)
+        frag.addAlignment(aln)
+        prev_qname = aln.query_name
+    if frag.isValid(minMapq, maxNM, maxGap, maxOvlp):
+        if multiPart:
+            if frag.isMultiParts(maxD):
+                frag.printMultiParts()
+        else:
+            frag.pairFragmentAlignment(maxD)
+            frag.printPairedEnds()
+    sam.close()
+    return 0
+
+
+if __name__ == '__main__':
+    from docopt import docopt
+
+    args = docopt(__doc__)
+    args = {k.lstrip('-<').rstrip('>'): args[k] for k in args}
+    try:
+        main(args)
+    except KeyboardInterrupt:
+        logging.warning('Interrupted')
+        sys.exit(1)
