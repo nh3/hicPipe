@@ -11,9 +11,13 @@
 2. samtools
 3. sambamba
 4. pigz
-5. trimFq (from ngs-utils)
-6. bam2bw (from ngs-utils)
+5. trimFq (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
+6. bam2bw (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
 <p></p>
+
+## Install ##
+1. Make sure all dependencies are installed, in PATH and executable
+2. Make sure scripts `pairSplitRead` and `gatherCSeqStats` are in PATH and executable
 
 ## Usage ##
     Usage:
