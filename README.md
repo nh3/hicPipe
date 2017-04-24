@@ -7,16 +7,18 @@
 <p></p>
 
 ## Dependencies ##
-1. bwa
-2. samtools
-3. sambamba
-4. bedtools
-5. pigz
-6. gnu parallel
-7. trimFq (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
-8. bam2bw (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
-9. numpy
-10. pysam
+1. Executables
+    1. bwa
+    2. samtools
+    3. sambamba
+    4. bedtools
+    5. pigz
+    6. gnu parallel
+    7. trimFq (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
+    8. bam2bw (from [nh3/ngs-utils](https://github.com/nh3/ngs-utils))
+2. libraries
+    1. numpy
+    2. pysam
 <p></p>
 
 ## Install ##
