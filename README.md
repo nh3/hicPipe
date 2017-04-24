@@ -24,6 +24,7 @@
 ## Install ##
 1. Make sure all dependencies are properly installed, executables are in PATH
 2. Make sure scripts `pairSplitRead` and `gatherCSeqStats` are in PATH and executable
+<p></p>
 
 ## Usage ##
     Usage:
