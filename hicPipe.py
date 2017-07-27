@@ -11,6 +11,7 @@ Options:
     --end <INT>          index of the last step to run
     --nThread <INT>      number of threads [default: 1]
     --exChrom <INT>      0-based index of excluded chromosomes in <genome>, index of MT by default [default: auto]
+    --exReg <FILE>       excluded region, in BED format (3 columns minimum)
     --minD <INT>         minimum mapping distance (bp) for informative read pairs [default: 600]
     --minMQ <INT>        minimum MAPQ [default: 30]
     --maxNM <INT>        maximum allowed number of mismatches per read [default: 2]
@@ -123,7 +124,7 @@ class Step(object):
 class HiCProject(object):
     def __init__(self, genome, read1, read2, output,
                  split=False, iter=False, short=False,
-                 nThread=1, exChrom=None, minMQ=30, maxNM=2, minD=600,
+                 nThread=1, exChrom=None, exReg=None, minMQ=30, maxNM=2, minD=600,
                  maxGap=19, maxOverlap=5, multiSplit=False, readLen=None, trimStep=4, minReadLen=20):
         self.genome = genome
         self.read1 = read1
@@ -135,6 +136,7 @@ class HiCProject(object):
             self.exChrom = self.findMtInGenome()
         else:
             self.exChrom = int(exChrom)
+        self.exReg = exReg
         self.minMQ = minMQ
         self.maxNM = maxNM
         self.minD = minD
@@ -210,7 +212,7 @@ class HiCProject(object):
             steps.append(self.bwaMem('bwaMem1', inputs=self.fastq1, output=self.aligned1, flag=READ1))
             steps.append(self.bwaMem('bwaMem2', inputs=self.fastq2, output=self.aligned2, flag=READ2))
             steps.append(self.mergeReads('mergeReads', inputs=[self.aligned1,self.aligned2], output=self.merged))
-            steps.append(self.pairSplitReads('pairSplit', inputs=self.merged, output=self.paired))
+            steps.append(self.pairSplitReads('pairSplit', inputs=self.merged, output=self.paired, exReg=self.exReg))
         elif self.mode == 'iter':
             bams = []
             i = 0
@@ -360,7 +362,7 @@ class HiCProject(object):
         args     = self.assignDefaultArgs(locals())
         align    = "bwa mem -t {nThread} -Y {otherBwaOpt} {genome} {inputs}"
         setFlag  = "awk -v OFS='\\t' '{{if ($0!~/^@/) {{$2=or($2, {flag})}}; print}}'"
-        sam2Bam  = "sambamba view -t {nThread} -S -f bam -o /dev/stdout /dev/stdin"
+        sam2Bam  = "sambamba view -t {nThread} -S -f bam /dev/stdin"
         sortName = "sambamba sort -n -o {output} /dev/stdin"
         cmd      = ' | '.join([align, setFlag, sam2Bam, sortName])
         return Step(stepName, cmd, defaultArgs=args)
@@ -369,18 +371,18 @@ class HiCProject(object):
         args     = self.assignDefaultArgs(locals())
         align    = "bwa aln -t {nThread} {otherBwaOpt} {genome} {inputs} | bwa samse {genome} - {inputs}"
         setFlag  = "awk -v OFS='\\t' '{{if ($0!~/^@/) {{$2=or($2, {flag})}}; print}}'"
-        sam2Bam  = "sambamba view -t {nThread} -S -f bam -o /dev/stdout /dev/stdin"
+        sam2Bam  = "sambamba view -t {nThread} -S -f bam /dev/stdin"
         sortName = "sambamba sort -n -o {output} /dev/stdin"
         cmd      = ' | '.join([align, setFlag, sam2Bam, sortName])
         return Step(stepName, cmd, defaultArgs=args)
 
     def trimUnmapped(self, stepName, inputs, output, length, nThread=1):
         args     = self.assignDefaultArgs(locals())
-        filter   = "samtools view -u -f 0x4 {inputs}"
+        filters  = "samtools view -u -f 0x4 {inputs}"
         bam2Fq   = "samtools bam2fq -n -s /dev/stdout -"
         trim     = "trimFq -5 {length}"
         compress = "pigz -p {nThread} -c > {output}"
-        cmd      = ' | '.join([filter, bam2Fq, trim, compress])
+        cmd      = ' | '.join([filters, bam2Fq, trim, compress])
         return Step(stepName, cmd, defaultArgs=args)
 
     def mergeReads(self, stepName, inputs, output, nThread=1):
@@ -391,10 +393,13 @@ class HiCProject(object):
         cmd      = ' | '.join([merge, sort])
         return Step(stepName, cmd, defaultArgs=args)
 
-    def pairSplitReads(self, stepName, inputs, output, nThread=1, exChrom=-1, minMQ=30, maxNM=2, maxGap=19, maxOverlap=5, minD=600):
+    def pairSplitReads(self, stepName, inputs, output, nThread=1, exChrom=-1, exReg=None, minMQ=30, maxNM=2, maxGap=19, maxOverlap=5, minD=600):
         args     = self.assignDefaultArgs(locals())
-        filter   = "sambamba view -t {nThread} -F 'ref_id!={exChrom}' -h {inputs}"
-        pair     = "pairSplitRead -m {minMQ} -n {maxNM} -g {maxGap} -v {maxOverlap} -d {minD} -i <(%s)" % filter
+        if exReg is None:
+            filters = "sambamba view -t {nThread} -F 'ref_id!={exChrom}' -h {inputs}"
+        else:
+            filters = "bedtools intersect -v -a {inputs} -b {exReg} | sambamba view -F 'ref_id!={exChrom}' -h /dev/stdin"
+        pair     = "pairSplitRead -m {minMQ} -n {maxNM} -g {maxGap} -v {maxOverlap} -d {minD} -i <(%s)" % filters
         fixmate  = "samtools fixmate -r -p -O bam - -"
         sort     = "sambamba sort -t {nThread} -o {output} /dev/stdin"
         cmd      = ' | '.join([pair, fixmate, sort])
@@ -402,10 +407,10 @@ class HiCProject(object):
 
     def pairReads(self, stepName, inputs, output, nThread=1, exChrom=-1, minMQ=30, maxNM=2):
         args     = self.assignDefaultArgs(locals())
-        filter   = "sambamba view -t {nThread} -F 'ref_id!={exChrom} and mapping_quality>={minMQ} and [NM]<={maxNM}' -f bam {inputs}"
+        filters  = "sambamba view -t {nThread} -F 'ref_id!={exChrom} and mapping_quality>={minMQ} and [NM]<={maxNM}' -f bam {inputs}"
         fixmate  = "samtools fixmate -r -p -O bam - -"
         pair     = "sambamba sort -t {nThread} -F 'paired' -o {output} /dev/stdin"
-        cmd      = ' | '.join([filter, fixmate, pair])
+        cmd      = ' | '.join([filters, fixmate, pair])
         return Step(stepName, cmd, defaultArgs=args)
 
     def markDup(self, stepName, inputs, output, nThread=1):
