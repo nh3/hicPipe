@@ -388,7 +388,7 @@ class HiCProject(object):
     def mergeReads(self, stepName, inputs, output, nThread=1):
         args     = self.assignDefaultArgs(locals())
         inputs   = ' '.join(['{{inputs[{}]}}'.format(i) for i in xrange(len(inputs))])
-        merge    = "sambamba merge -t {nThread} /dev/stdout " + inputs
+        merge    = "samtools merge -@ {nThread} - " + inputs
         sort     = "sambamba sort -t {nThread} -F 'not unmapped' -n -o {output} /dev/stdin"
         cmd      = ' | '.join([merge, sort])
         return Step(stepName, cmd, defaultArgs=args)
