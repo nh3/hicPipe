@@ -64,69 +64,72 @@ class Fragment(object):
 
     def pairFragmentAlignment(self, max_d):
         assert self.valid, 'self.valid unset or false'
-        if self.fEnd1.nAlign == 1 and self.fEnd2.nAlign == 1:
-            pairType = 0
-            paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-        elif self.fEnd1.nAlign == 2 and self.fEnd2.nAlign == 1:
-            pairType = 1
-            a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
-            a1b0 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[0], max_d)
-            a0a1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd1.alignments[1], max_d)
-            if not a0a1 and ((not a0b0 and a1b0) or (a0b0 and not a1b0)):
-                self.fEnd1.alignments[1].flag += 0x40
-                self.fEnd1.alignments[1].flag ^ 0x10
-                paired = (self.fEnd1.alignments[0], self.fEnd1.alignments[1])
-            elif not a0b0 and not a1b0 and a0a1:
-                pairType = 11
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-            else:
-                pairType = 12
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-        elif self.fEnd1.nAlign == 1 and self.fEnd2.nAlign == 2:
-            pairType = 1
-            a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
-            a0b1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[1], max_d)
-            b0b1 = self.fromNormalFragment(self.fEnd2.alignments[0], self.fEnd2.alignments[1], max_d)
-            if not b0b1 and ((not a0b0 and a0b1) or (a0b0 and not a0b1)):
-                self.fEnd2.alignments[0].flag -= 0x40
-                self.fEnd2.alignments[0].flag ^ 0x10
-                paired = (self.fEnd2.alignments[0], self.fEnd2.alignments[1])
-            elif not a0b0 and not a0b1 and b0b1:
-                pairType = 11
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-            else:
-                pairType = 12
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-        elif self.fEnd1.nAlign == 2 and self.fEnd2.nAlign == 2:
-            pairType = 2
-            a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
-            a1b0 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[0], max_d)
-            a0b1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[1], max_d)
-            a1b1 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[1], max_d)
-            if a0b0 and a1b1 and not a0b1 and not a1b0:
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[1])
-            elif a0b1 and a1b0 and not a0b0 and not a1b1:
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-            elif a0b0 and not a1b1:
-                pairType = 21
-                paired = (self.fEnd1.alignments[1], self.fEnd2.alignments[1])
-            elif a0b1 and not a1b0:
-                pairType = 22
-                paired = (self.fEnd1.alignments[1], self.fEnd2.alignments[0])
-            elif a1b0 and not a0b1:
-                pairType = 23
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[1])
-            elif a1b1 and not a0b0:
-                pairType = 24
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-            else:
-                pairType = 25
-                paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
-        else:
-            pairType = 9
-            paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        self.fEnd1.sortAlignments(byReference=False)
+        self.fEnd2.sortAlignments(byReference=False)
+        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #if self.fEnd1.nAlign == 1 and self.fEnd2.nAlign == 1:
+        #    pairType = 0
+        #    paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #elif self.fEnd1.nAlign == 2 and self.fEnd2.nAlign == 1:
+        #    pairType = 1
+        #    a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
+        #    a1b0 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[0], max_d)
+        #    a0a1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd1.alignments[1], max_d)
+        #    if not a0a1 and ((not a0b0 and a1b0) or (a0b0 and not a1b0)):
+        #        self.fEnd1.alignments[1].flag += 0x40
+        #        self.fEnd1.alignments[1].flag ^ 0x10
+        #        paired = (self.fEnd1.alignments[0], self.fEnd1.alignments[1])
+        #    elif not a0b0 and not a1b0 and a0a1:
+        #        pairType = 11
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #    else:
+        #        pairType = 12
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #elif self.fEnd1.nAlign == 1 and self.fEnd2.nAlign == 2:
+        #    pairType = 1
+        #    a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
+        #    a0b1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[1], max_d)
+        #    b0b1 = self.fromNormalFragment(self.fEnd2.alignments[0], self.fEnd2.alignments[1], max_d)
+        #    if not b0b1 and ((not a0b0 and a0b1) or (a0b0 and not a0b1)):
+        #        self.fEnd2.alignments[0].flag -= 0x40
+        #        self.fEnd2.alignments[0].flag ^ 0x10
+        #        paired = (self.fEnd2.alignments[0], self.fEnd2.alignments[1])
+        #    elif not a0b0 and not a0b1 and b0b1:
+        #        pairType = 11
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #    else:
+        #        pairType = 12
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #elif self.fEnd1.nAlign == 2 and self.fEnd2.nAlign == 2:
+        #    pairType = 2
+        #    a0b0 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[0], max_d)
+        #    a1b0 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[0], max_d)
+        #    a0b1 = self.fromNormalFragment(self.fEnd1.alignments[0], self.fEnd2.alignments[1], max_d)
+        #    a1b1 = self.fromNormalFragment(self.fEnd1.alignments[1], self.fEnd2.alignments[1], max_d)
+        #    if a0b0 and a1b1 and not a0b1 and not a1b0:
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[1])
+        #    elif a0b1 and a1b0 and not a0b0 and not a1b1:
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #    elif a0b0 and not a1b1:
+        #        pairType = 21
+        #        paired = (self.fEnd1.alignments[1], self.fEnd2.alignments[1])
+        #    elif a0b1 and not a1b0:
+        #        pairType = 22
+        #        paired = (self.fEnd1.alignments[1], self.fEnd2.alignments[0])
+        #    elif a1b0 and not a0b1:
+        #        pairType = 23
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[1])
+        #    elif a1b1 and not a0b0:
+        #        pairType = 24
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #    else:
+        #        pairType = 25
+        #        paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
+        #else:
+        #    pairType = 9
+        #    paired = (self.fEnd1.alignments[0], self.fEnd2.alignments[0])
         for aln in paired:
-            aln.set_tag('ZT', pairType, value_type='i')
+            #aln.set_tag('ZT', pairType, value_type='i')
             if aln.flag & 0x800:
                 aln.flag -= 0x800
         self.pairedEnds = paired
@@ -257,8 +260,9 @@ class FragmentEnd(object):
         if byReference:
             self.alignments = sorted(self.alignments, key=attrgetter('reference_id','reference_start'))
         else:
-            idx = np.argsort(np.array(self.queryStarts))
-            self.alignments = [self.alignments[i] for i in idx]
+            self.alignments = sorted(self.alignments, key=attrgetter('query_alignment_start','query_alignment_end'))
+            #idx = np.argsort(np.array(self.queryStarts))
+            #self.alignments = [self.alignments[i] for i in idx]
         self.sortedAln = True
 
     def calcAlignmentDistance(self):
