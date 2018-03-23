@@ -362,7 +362,7 @@ class HiCProject(object):
         args     = self.assignDefaultArgs(locals())
         align    = "bwa mem -t {nThread} -Y {otherBwaOpt} {genome} {inputs}"
         setFlag  = "awk -v OFS='\\t' '{{if ($0!~/^@/) {{$2=or($2, {flag})}}; print}}'"
-        sam2Bam  = "sambamba view -t {nThread} -S -f bam /dev/stdin"
+        sam2Bam  = "samtools view -@ {nThread} -b -"
         sortName = "sambamba sort -n -o {output} /dev/stdin"
         cmd      = ' | '.join([align, setFlag, sam2Bam, sortName])
         return Step(stepName, cmd, defaultArgs=args)
@@ -371,7 +371,7 @@ class HiCProject(object):
         args     = self.assignDefaultArgs(locals())
         align    = "bwa aln -t {nThread} {otherBwaOpt} {genome} {inputs} | bwa samse {genome} - {inputs}"
         setFlag  = "awk -v OFS='\\t' '{{if ($0!~/^@/) {{$2=or($2, {flag})}}; print}}'"
-        sam2Bam  = "sambamba view -t {nThread} -S -f bam /dev/stdin"
+        sam2Bam  = "samtools view -@ {nThread} -b -"
         sortName = "sambamba sort -n -o {output} /dev/stdin"
         cmd      = ' | '.join([align, setFlag, sam2Bam, sortName])
         return Step(stepName, cmd, defaultArgs=args)
@@ -420,7 +420,7 @@ class HiCProject(object):
 
     def removeDup(self, stepName, inputs, output, nThread=1):
         args     = self.assignDefaultArgs(locals())
-        cmd      = "sambamba view -t {nThread} -F 'not duplicate' -f bam -o {output} {inputs}"
+        cmd      = "samtools view -@ {nThread} -F 0x400 -b -o {output} {inputs}"
         return Step(stepName, cmd, defaultArgs=args)
 
     def extractTransInfo(self, stepName, inputs, output, nThread=1):
@@ -435,7 +435,7 @@ class HiCProject(object):
 
     def makeBigwig(self, stepName, inputs, output, nThread=1, chromSize=None):
         args     = self.assignDefaultArgs(locals())
-        cmd      = "bam2bw -b {inputs} -c {chromSize} -o {output}"
+        cmd      = "bam2bw -c {chromSize} -o {output} {inputs}"
         return Step(stepName, cmd, defaultArgs=args)
 
     def gatherStats(self, stepName, inputs, output, nThread=1, exChrom=-1):
