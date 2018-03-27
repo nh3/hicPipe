@@ -170,8 +170,8 @@ class HiCProject(object):
 
     def prepareFileNames(self):
         self.chromSize = os.path.join(self.outdir, os.path.basename(self.genome).replace('.fa','.chromSize.txt'))
-        self.fastq1    = '{}read1.fastq.gz'.format(self.prefix)
-        self.fastq2    = '{}read2.fastq.gz'.format(self.prefix)
+        self.fastq1    = '{}read1.cleaned.fastq.gz'.format(self.prefix)
+        self.fastq2    = '{}read2.cleaned.fastq.gz'.format(self.prefix)
         self.aligned1  = '{}read1.bam'.format(self.prefix)
         self.aligned2  = '{}read2.bam'.format(self.prefix)
         self.merged    = '{}merged.sortn.bam'.format(self.prefix)
@@ -224,8 +224,8 @@ class HiCProject(object):
                     else:
                         prevBam1 = '{}read1.{}bp.bam'.format(self.prefix, rlen+self.trimStep)
                         prevBam2 = '{}read2.{}bp.bam'.format(self.prefix, rlen+self.trimStep)
-                    fq1 = '{}read1.{}bp.fastq.gz'.format(self.prefix, rlen)
-                    fq2 = '{}read2.{}bp.fastq.gz'.format(self.prefix, rlen)
+                    fq1 = '{}read1.cleaned.{}bp.fastq.gz'.format(self.prefix, rlen)
+                    fq2 = '{}read2.cleaned.{}bp.fastq.gz'.format(self.prefix, rlen)
                     bam1 = '{}read1.{}bp.bam'.format(self.prefix, rlen)
                     bam2 = '{}read2.{}bp.bam'.format(self.prefix, rlen)
                     steps.append(self.trimUnmapped('trim1-{}'.format(rlen), inputs=prevBam1, output=fq1, length=rlen))
@@ -353,7 +353,7 @@ class HiCProject(object):
             cmds.append('mkdir {}'.format(dir))
         for read,fq in zip(inputs, output):
             if not os.path.lexists(fq) and fq != read:
-                cmds.append('ln -s {} {}'.format(os.path.abspath(read), fq))
+                cmds.append('ln -rs {} {}'.format(os.path.abspath(read), fq))
         cmds.append('cut -f1,2 {} > {}'.format(self.genome+'.fai', self.chromSize))
         cmd = ' && '.join(cmds)
         return Step(stepName, cmd, defaultArgs=args)
