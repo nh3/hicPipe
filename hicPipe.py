@@ -170,8 +170,8 @@ class HiCProject(object):
 
     def prepareFileNames(self):
         self.chromSize = os.path.join(self.outdir, os.path.basename(self.genome).replace('.fa','.chromSize.txt'))
-        self.fastq1    = '{}read1.fastq.gz'.format(self.prefix)
-        self.fastq2    = '{}read2.fastq.gz'.format(self.prefix)
+        self.fastq1    = '{}read1.cleaned.fastq.gz'.format(self.prefix)
+        self.fastq2    = '{}read2.cleaned.fastq.gz'.format(self.prefix)
         self.aligned1  = '{}read1.bam'.format(self.prefix)
         self.aligned2  = '{}read2.bam'.format(self.prefix)
         self.merged    = '{}merged.sortn.bam'.format(self.prefix)
@@ -224,8 +224,8 @@ class HiCProject(object):
                     else:
                         prevBam1 = '{}read1.{}bp.bam'.format(self.prefix, rlen+self.trimStep)
                         prevBam2 = '{}read2.{}bp.bam'.format(self.prefix, rlen+self.trimStep)
-                    fq1 = '{}read1.{}bp.fastq.gz'.format(self.prefix, rlen)
-                    fq2 = '{}read2.{}bp.fastq.gz'.format(self.prefix, rlen)
+                    fq1 = '{}read1.cleaned.{}bp.fastq.gz'.format(self.prefix, rlen)
+                    fq2 = '{}read2.cleaned.{}bp.fastq.gz'.format(self.prefix, rlen)
                     bam1 = '{}read1.{}bp.bam'.format(self.prefix, rlen)
                     bam2 = '{}read2.{}bp.bam'.format(self.prefix, rlen)
                     steps.append(self.trimUnmapped('trim1-{}'.format(rlen), inputs=prevBam1, output=fq1, length=rlen))
@@ -353,7 +353,7 @@ class HiCProject(object):
             cmds.append('mkdir {}'.format(dir))
         for read,fq in zip(inputs, output):
             if not os.path.lexists(fq) and fq != read:
-                cmds.append('ln -s {} {}'.format(os.path.abspath(read), fq))
+                cmds.append('ln -rs {} {}'.format(os.path.abspath(read), fq))
         cmds.append('cut -f1,2 {} > {}'.format(self.genome+'.fai', self.chromSize))
         cmd = ' && '.join(cmds)
         return Step(stepName, cmd, defaultArgs=args)
@@ -362,7 +362,7 @@ class HiCProject(object):
         args     = self.assignDefaultArgs(locals())
         align    = "bwa mem -t {nThread} -Y {otherBwaOpt} {genome} {inputs}"
         setFlag  = "awk -v OFS='\\t' '{{if ($0!~/^@/) {{$2=or($2, {flag})}}; print}}'"
-        sam2Bam  = "samtools view -@ {nThread} -b -"
+        sam2Bam  = "sambamba view -t {nThread} -S -f bam /dev/stdin"
         sortName = "sambamba sort -n -o {output} /dev/stdin"
         cmd      = ' | '.join([align, setFlag, sam2Bam, sortName])
         return Step(stepName, cmd, defaultArgs=args)
@@ -371,7 +371,7 @@ class HiCProject(object):
         args     = self.assignDefaultArgs(locals())
         align    = "bwa aln -t {nThread} {otherBwaOpt} {genome} {inputs} | bwa samse {genome} - {inputs}"
         setFlag  = "awk -v OFS='\\t' '{{if ($0!~/^@/) {{$2=or($2, {flag})}}; print}}'"
-        sam2Bam  = "samtools view -@ {nThread} -b -"
+        sam2Bam  = "sambamba view -t {nThread} -S -f bam /dev/stdin"
         sortName = "sambamba sort -n -o {output} /dev/stdin"
         cmd      = ' | '.join([align, setFlag, sam2Bam, sortName])
         return Step(stepName, cmd, defaultArgs=args)
@@ -420,7 +420,7 @@ class HiCProject(object):
 
     def removeDup(self, stepName, inputs, output, nThread=1):
         args     = self.assignDefaultArgs(locals())
-        cmd      = "samtools view -@ {nThread} -F 0x400 -b -o {output} {inputs}"
+        cmd      = "sambamba view -t {nThread} -F 'not duplicate' -f bam -o {output} {inputs}"
         return Step(stepName, cmd, defaultArgs=args)
 
     def extractTransInfo(self, stepName, inputs, output, nThread=1):
