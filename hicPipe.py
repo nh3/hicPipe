@@ -435,7 +435,7 @@ class HiCProject(object):
 
     def makeBigwig(self, stepName, inputs, output, nThread=1, chromSize=None):
         args     = self.assignDefaultArgs(locals())
-        cmd      = "bam2bw -b {inputs} -c {chromSize} -o {output}"
+        cmd      = "bam2bw -c {chromSize} -o {output} {inputs}"
         return Step(stepName, cmd, defaultArgs=args)
 
     def gatherStats(self, stepName, inputs, output, nThread=1, exChrom=-1):
