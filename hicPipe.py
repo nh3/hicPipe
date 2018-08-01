@@ -185,6 +185,21 @@ class HiCProject(object):
         self.seqStats  = '{}stats.txt'.format(self.prefix)
         self.log       = '{}log'.format(self.prefix)
         self.statusLog = '{}status'.format(self.prefix)
+        self.outFnTbl  = '{}outputs.txt'.format(self.prefix)
+
+    def writeOutputInfoTable(self):
+        expName = os.path.basename(self.prefix).rstrip('.')
+        gVersion = os.path.basename(self.genome).replace('.fa', '')
+        with open(self.outFnTbl, 'w') as fh:
+            print(','.join(['ContactExpID', 'Processing', 'Scale',  'genome', 'Resolution', 'filetype_format', 'uniq', 'path']),          file=fh)
+            print(','.join([expName,        'read1raw',   'NA',     gVersion, 'NA',         'fastq.gz',        'FALSE', self.fastq1]),    file=fh)
+            print(','.join([expName,        'read2raw',   'NA',     gVersion, 'NA',         'fastq.gz',        'FALSE', self.fastq2]),    file=fh)
+            print(','.join([expName,        'aligned',    'NA',     gVersion, 'NA',         'bam',             'FALSE', self.merged]),    file=fh)
+            print(','.join([expName,        'valid',      'NA',     gVersion, 'NA',         'bam',             'TRUE',  self.valid]),     file=fh)
+            print(','.join([expName,        'cisInfo',    'NA',     gVersion, 'NA',         'bam',             'TRUE',  self.cisInfo]),   file=fh)
+            print(','.join([expName,        'transInfo',  'NA',     gVersion, 'NA',         'bam',             'TRUE',  self.transInfo]), file=fh)
+            print(','.join([expName,        'validRPM',   'linear', gVersion, '1bp',        'bw',              'TRUE',  self.validBW]),   file=fh)
+            print(','.join([expName,        'cisInfoRPM', 'linear', gVersion, '1bp',        'bw',              'TRUE',  self.cisInfoBW]), file=fh)
 
     def findMtInGenome(self):
         fai = self.genome + '.fai'
@@ -460,6 +475,7 @@ class HiCProject(object):
     def callSignificantInteractions(self):
         pass
 
+
 def which(program):
     def is_exe(fpath):
         return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
@@ -514,6 +530,7 @@ def main(args):
         if end is not None:
             end = int(end)
         hic.run(resume=resume, start=start, end=end)
+        hic.writeOutputInfoTable()
     logging.info('all done')
     return 0
 
